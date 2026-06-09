@@ -91,6 +91,12 @@ POST /ask (AiService)
 └─ chat (gen_ai) ............. llama3.2 · tokens in/out · latência
 ```
 
+Captura real do dashboard — uma request `POST /ask` (38s, 3 recursos, 14 spans) com o fluxo
+completo: **embed (all-minilm) → pgvector → orchestrate_tools → chat (llama3.2) →
+execute_tool (ListSources) → chat** — RAG, observabilidade GenAI e tool-calling num trace só:
+
+![Trace RAG no dashboard do .NET Aspire: POST /ask cruzando embeddings (all-minilm) → pgvector → chat (llama3.2) com tool-calling, em spans GenAI](docs/images/rag-trace.png)
+
 ## Verificação ao vivo
 
 ```bash

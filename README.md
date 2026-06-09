@@ -61,18 +61,56 @@ trace distribuído** com tokens/custo nos spans.
 ```bash
 dotnet new install Aspire.ProjectTemplates   # uma vez
 
-# sobe pgvector + Ollama (baixa os modelos) + o serviço + dashboard
+# sobe pgvector + Ollama (baixa all-minilm + llama3.2) + o serviço + dashboard
 dotnet run --project src/AppHost
+#   → o console imprime a URL do dashboard (com token de login)
 
-# indexa o corpus e pergunta
-curl -X POST http://localhost:<porta>/ingest    # corpus de docs do portfólio
-curl -X POST http://localhost:<porta>/ask -H 'Content-Type: application/json' -d '{"question":"O que é o Outbox no distributed-consistency-lab?"}'
+# indexa o corpus (docs do portfólio) e pergunta — a porta do serviço aparece no dashboard
+curl -X POST http://localhost:<porta>/ingest
+curl -X POST http://localhost:<porta>/ask -H 'Content-Type: application/json' \
+  -d '{"question":"What is the transactional outbox and why use it?"}'
+```
+
+### Endpoints
+
+| Endpoint | O quê |
+|---|---|
+| `POST /ingest` | Indexa o corpus (chunk → embed → pgvector) |
+| `GET /search?q=` | Busca por similaridade (a metade de retrieval do RAG) |
+| `POST /ask` | RAG completo: retrieve → prompt grounded → LLM (com tool-calling) → resposta **com citações** |
+
+### Ver o trace RAG (o killer detail)
+
+Dispare um `POST /ask` e abra o **dashboard → Traces**. A request aparece como **um único trace**
+cruzando os hops, com **modelo, tokens e latência** nos spans (OTel GenAI conventions):
+
+```
+POST /ask (AiService)
+├─ embed (gen_ai) ............ all-minilm
+├─ db query (pgvector) ....... similarity search
+└─ chat (gen_ai) ............. llama3.2 · tokens in/out · latência
 ```
 
 ## Verificação ao vivo
 
 ```bash
-dotnet test   # sobe a app (pgvector + serviço) com fake provider — determinístico, sem LLM externo
+dotnet test
+```
+
+- **Plumbing** (determinístico, fake provider): ingest + `/search` + `/ask` com citações + tool-calling — rápido, sem LLM externo.
+- **Eval** (embeddings reais): recall@3 sobre um golden-set, com **gate** num threshold (ADR-004). Última execução: **recall@3 = 8/8 (100%)**.
+
+## Estrutura
+
+```
+src/
+  AppHost/          — orquestração (Aspire): pgvector + Ollama (all-minilm, llama3.2) + serviço
+  ServiceDefaults/  — OTel + health + service discovery + resiliência
+  AiService/        — Minimal API: /ingest, /search, /ask; Microsoft.Extensions.AI
+data/               — corpus bundlado (docs de arquitetura dos 4 labs)
+tests/
+  AppHost.Tests/    — fakes determinísticos (plumbing) + eval com embeddings reais
+docs/adr/           — decisões de arquitetura
 ```
 
 ## Decisões de arquitetura

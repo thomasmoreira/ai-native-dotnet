@@ -16,9 +16,17 @@ internal sealed record AskResult(string Answer, IReadOnlyList<Citation> Citation
 internal sealed class AskService(
     ChunkRepository repository,
     IEmbeddingGenerator<string, Embedding<float>> embedder,
-    IChatClient chatClient)
+    IChatClient chatClient,
+    CorpusTools tools)
 {
     private const int TopK = 3;
+
+    // The model may call list_sources to discover what it can cite (tool-calling). The
+    // function-invocation middleware runs it and loops the result back automatically.
+    private readonly ChatOptions _chatOptions = new()
+    {
+        Tools = [AIFunctionFactory.Create(tools.ListSourcesAsync)],
+    };
 
     public async Task<AskResult> AskAsync(string question, CancellationToken cancellationToken = default)
     {
@@ -41,7 +49,7 @@ internal sealed class AskService(
             Question: {question}
             """;
 
-        var response = await chatClient.GetResponseAsync(prompt, cancellationToken: cancellationToken);
+        var response = await chatClient.GetResponseAsync(prompt, _chatOptions, cancellationToken);
 
         var citations = hits.Select((hit, i) => new Citation(i + 1, hit.Source)).ToList();
         return new AskResult(response.Text, citations);

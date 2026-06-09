@@ -22,7 +22,9 @@ public class AskTests(AppHostFixture fixture)
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = document.RootElement;
 
-        Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("answer").GetString()));
+        // The fake chat client only returns this answer after the function-invocation pipeline
+        // ran the offered tool and looped the result back — so this asserts tool-calling worked.
+        Assert.Equal("Answer grounded with tool assistance [1].", root.GetProperty("answer").GetString());
 
         var citations = root.GetProperty("citations");
         Assert.InRange(citations.GetArrayLength(), 1, 3);

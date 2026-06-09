@@ -57,6 +57,20 @@ internal sealed class ChunkRepository(NpgsqlDataSource dataSource)
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<string[]> ListSourcesAsync(CancellationToken cancellationToken = default)
+    {
+        var sources = new List<string>();
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand("SELECT DISTINCT source FROM chunks ORDER BY source;", connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            sources.Add(reader.GetString(0));
+        }
+
+        return [.. sources];
+    }
+
     public async Task<IReadOnlyList<SearchHit>> SearchAsync(ReadOnlyMemory<float> query, int k, CancellationToken cancellationToken = default)
     {
         var hits = new List<SearchHit>();

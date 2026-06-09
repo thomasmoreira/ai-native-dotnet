@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      # EnforceCodeStyleInBuild + TreatWarningsAsErrors turn analyzer/style issues into build
+      # failures. The deterministic tests use a fake AI provider (ADR-006); the Ollama path is
+      # verified locally (it needs a model + Docker). CI guarantees the solution compiles.
+      - name: Build
+        run: dotnet build --no-restore --configuration Release

@@ -13,15 +13,16 @@ builder.AddNpgsqlDataSource("vectordb");
 if (builder.Configuration.GetConnectionString("embeddings") is not null)
 {
     builder.AddOllamaApiClient("embeddings").AddEmbeddingGenerator();
-    builder.AddOllamaApiClient("chat").AddChatClient();
+    builder.AddOllamaApiClient("chat").AddChatClient().UseFunctionInvocation();
 }
 else
 {
     builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ => new FakeEmbeddingGenerator());
-    builder.Services.AddSingleton<IChatClient>(_ => new FakeChatClient());
+    builder.Services.AddChatClient(new FakeChatClient()).UseFunctionInvocation();
 }
 
 builder.Services.AddSingleton<ChunkRepository>();
+builder.Services.AddSingleton<CorpusTools>();
 builder.Services.AddSingleton<CorpusIngestor>();
 builder.Services.AddSingleton<AskService>();
 

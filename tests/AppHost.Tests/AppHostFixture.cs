@@ -3,9 +3,9 @@ using Aspire.Hosting;
 namespace AppHost.Tests;
 
 /// <summary>
-/// Starts the distributed app once for the test class — but with <c>UseOllama=false</c>, so the
-/// AppHost skips the Ollama container and the AiService falls back to a deterministic fake
-/// embedder (ADR-006). Only pgvector (Postgres) is a real container: fast and reproducible.
+/// Starts the distributed app once for the whole test collection — with <c>UseOllama=false</c>, so
+/// the AppHost skips the Ollama container and the AiService falls back to deterministic fakes
+/// (ADR-006). Only pgvector (Postgres) is a real container. The bundled corpus is ingested once.
 /// </summary>
 public sealed class AppHostFixture : IAsyncLifetime
 {
@@ -20,6 +20,10 @@ public sealed class AppHostFixture : IAsyncLifetime
         App = await builder.BuildAsync();
         await App.StartAsync();
         await App.ResourceNotifications.WaitForResourceHealthyAsync("aiservice").WaitAsync(StartupTimeout);
+
+        using var client = App.CreateHttpClient("aiservice");
+        using var ingest = await client.PostAsync("/ingest", content: null);
+        ingest.EnsureSuccessStatusCode();
     }
 
     public async Task DisposeAsync() => await App.DisposeAsync();

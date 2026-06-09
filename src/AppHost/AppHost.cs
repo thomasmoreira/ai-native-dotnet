@@ -17,7 +17,10 @@ if (builder.Configuration["UseOllama"] is not "false")
 {
     var ollama = builder.AddOllama("ollama").WithDataVolume();
     var embeddings = ollama.AddModel("embeddings", "all-minilm");
-    aiservice.WithReference(embeddings).WaitFor(embeddings);
+    var chat = ollama.AddModel("chat", "llama3.2:1b");
+    aiservice
+        .WithReference(embeddings).WaitFor(embeddings)
+        .WithReference(chat).WaitFor(chat);
 }
 
 builder.Build().Run();

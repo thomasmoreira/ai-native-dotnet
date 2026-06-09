@@ -9,18 +9,21 @@ builder.AddServiceDefaults();
 // Npgsql type-mapping package is needed (and we stay decoupled from its versioning).
 builder.AddNpgsqlDataSource("vectordb");
 
-// Embeddings: real Ollama when the AppHost wired it, else a deterministic fake (tests/offline).
+// AI providers: real Ollama when the AppHost wired it, else deterministic fakes (tests/offline).
 if (builder.Configuration.GetConnectionString("embeddings") is not null)
 {
     builder.AddOllamaApiClient("embeddings").AddEmbeddingGenerator();
+    builder.AddOllamaApiClient("chat").AddChatClient();
 }
 else
 {
     builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ => new FakeEmbeddingGenerator());
+    builder.Services.AddSingleton<IChatClient>(_ => new FakeChatClient());
 }
 
 builder.Services.AddSingleton<ChunkRepository>();
 builder.Services.AddSingleton<CorpusIngestor>();
+builder.Services.AddSingleton<AskService>();
 
 var app = builder.Build();
 
@@ -41,6 +44,17 @@ app.MapGet("/search", async (string q, ChunkRepository repository, IEmbeddingGen
     var vector = await embedder.GenerateVectorAsync(q, cancellationToken: ct);
     var hits = await repository.SearchAsync(vector, k: 3, ct);
     return Results.Ok(hits);
+});
+
+// Full RAG: retrieve grounded context and answer the question with citations.
+app.MapPost("/ask", async (AskRequest request, AskService ask, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Question))
+    {
+        return Results.BadRequest("Field 'question' is required.");
+    }
+
+    return Results.Ok(await ask.AskAsync(request.Question, ct));
 });
 
 await app.Services.GetRequiredService<ChunkRepository>().EnsureSchemaAsync();

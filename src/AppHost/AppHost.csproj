@@ -6,4 +6,13 @@
     <UserSecretsId>6cd584d3-c08c-4475-837d-427f8138c6ee</UserSecretsId>
   </PropertyGroup>
 
+  <ItemGroup Label="Aspire hosting integrations">
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.Ollama" />
+  </ItemGroup>
+
+  <ItemGroup Label="Orchestrated services">
+    <ProjectReference Include="../AiService/AiService.csproj" />
+  </ItemGroup>
+
 </Project>

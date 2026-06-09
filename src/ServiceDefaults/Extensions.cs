@@ -28,8 +28,16 @@ public static class Extensions
 
         builder.Services.ConfigureHttpClientDefaults(http =>
         {
-            // Turn on resilience by default
-            http.AddStandardResilienceHandler();
+            // Resilience by default. The timeouts are generous because these defaults also wrap the
+            // local-LLM HttpClient (Ollama), and CPU inference is far slower than service-to-service
+            // calls — the stock 30s attempt timeout would cancel a valid completion (CircuitBreaker
+            // SamplingDuration must stay >= 2x the attempt timeout).
+            http.AddStandardResilienceHandler(options =>
+            {
+                options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(5);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(10);
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(10);
+            });
 
             // Turn on service discovery by default
             http.AddServiceDiscovery();

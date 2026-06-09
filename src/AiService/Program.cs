@@ -1,6 +1,8 @@
 using AiService;
 using Microsoft.Extensions.AI;
 
+const string GenAiSourceName = "AiService.GenAI"; // explicit OTel source for chat + embeddings.
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
@@ -12,14 +14,21 @@ builder.AddNpgsqlDataSource("vectordb");
 // AI providers: real Ollama when the AppHost wired it, else deterministic fakes (tests/offline).
 if (builder.Configuration.GetConnectionString("embeddings") is not null)
 {
-    builder.AddOllamaApiClient("embeddings").AddEmbeddingGenerator();
-    builder.AddOllamaApiClient("chat").AddChatClient().UseFunctionInvocation();
+    builder.AddOllamaApiClient("embeddings").AddEmbeddingGenerator().UseOpenTelemetry(sourceName: GenAiSourceName);
+    builder.AddOllamaApiClient("chat").AddChatClient()
+        .UseFunctionInvocation()
+        .UseOpenTelemetry(sourceName: GenAiSourceName, configure: telemetry => telemetry.EnableSensitiveData = true);
 }
 else
 {
     builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ => new FakeEmbeddingGenerator());
     builder.Services.AddChatClient(new FakeChatClient()).UseFunctionInvocation();
 }
+
+// Emit GenAI (Microsoft.Extensions.AI) spans and the Npgsql query spans into the trace, so a RAG
+// request shows embed → similarity search → chat with model, tokens and latency (OTel GenAI conventions).
+builder.Services.AddOpenTelemetry().WithTracing(tracing =>
+    tracing.AddSource(GenAiSourceName).AddSource("Npgsql"));
 
 builder.Services.AddSingleton<ChunkRepository>();
 builder.Services.AddSingleton<CorpusTools>();

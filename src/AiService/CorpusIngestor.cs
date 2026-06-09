@@ -30,9 +30,11 @@ internal sealed class CorpusIngestor(
         return count;
     }
 
-    // Naive chunking: split on blank lines (paragraphs) and keep the non-trivial ones. Good enough
-    // for the lab; a production splitter would respect headings, token budgets and overlap.
+    // Naive chunking: split on blank lines (paragraphs) and keep the non-trivial ones. Line
+    // endings are normalized first so it works regardless of how Git checked the files out (CRLF
+    // vs LF). Good enough for the lab; a production splitter would respect headings/token budgets.
     private static IEnumerable<string> Chunk(string text) =>
-        text.Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal)
+            .Split("\n\n", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(paragraph => paragraph.Length > 30);
 }

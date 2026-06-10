@@ -15,7 +15,7 @@ separam um engenheiro de IA arquiteto**:
 
 1. **RAG sério** — retrieval avaliado, resposta **com citações** (anti-alucinação).
 2. **Evals automatizadas** — a qualidade é **medida** (groundedness/precisão), não no chute.
-3. **Observabilidade de LLM** — cada chamada é um span com **tokens, custo e latência**.
+3. **Observabilidade de LLM** — cada chamada é um span com **modelo, tokens (in/out) e latência** (OTel GenAI).
 4. **Provider-agnóstico e testável** — troca o modelo numa linha; **testes determinísticos** sem chamar LLM de verdade.
 
 Fecha o arco do portfólio: **infra distribuída** ([consistency](https://github.com/thomasmoreira/distributed-consistency-lab) · [observability](https://github.com/thomasmoreira/observability-from-scratch) · [aspire](https://github.com/thomasmoreira/dotnet-aspire-reference)) **→ IA distribuída**, reusando Postgres, Aspire e OTel. O corpus default são **os próprios docs de arquitetura do portfólio** — um serviço de IA que **explica os seus labs**.
@@ -35,7 +35,7 @@ flowchart LR
 
 Uma pergunta em `POST /ask` dispara o pipeline RAG: **embed da pergunta → retrieve no pgvector
 (top-k) → contexto → LLM (com tool-calling) → resposta com citações**. Tudo vira **um único
-trace distribuído** com tokens/custo nos spans.
+trace distribuído** com modelo, tokens e latência nos spans.
 
 ## Componentes
 
@@ -51,7 +51,7 @@ trace distribuído** com tokens/custo nos spans.
 
 - **Evals como gate** — qualidade medida e versionada (análogo ao SLO do lab de observabilidade).
 - **Determinismo nos testes** — fake `IChatClient`/`IEmbeddingGenerator` → CI verde sem LLM externo.
-- **Custo/latência observáveis** — a conversa que todo arquiteto de IA precisa ter.
+- **Tokens/latência observáveis** — por chamada, no trace (custo é derivável de tokens × preço para um provider de nuvem; local é grátis).
 - **Troca de provider sem refatorar** — `Microsoft.Extensions.AI` como abstração.
 
 ## Como rodar

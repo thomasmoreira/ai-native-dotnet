@@ -1,26 +1,12 @@
 # ai-native-dotnet
 
-> Um serviço **.NET AI-native** feito **como arquiteto, não como demo de RAG**: RAG sobre
-> **pgvector**, **tool-calling**, **evals automatizadas**, **observabilidade de LLM** (OTel
-> GenAI) e **provider pluggable** (Ollama local por padrão) — tudo orquestrado pelo **.NET Aspire**.
+Serviço de RAG em .NET: indexa documentos no pgvector e responde perguntas com citações usando um LLM. O retrieval é avaliado por evals automatizadas, cada chamada de IA gera um span com modelo, tokens e latência, e o provider de LLM é trocável (`Microsoft.Extensions.AI`), com testes que não dependem de um modelo real. Os modelos rodam localmente via Ollama por padrão, e tudo é orquestrado com .NET Aspire.
+
+O corpus padrão são os docs de arquitetura dos meus outros labs, então dá para perguntar sobre eles. É o quarto projeto do conjunto, reaproveitando Postgres, Aspire e OpenTelemetry dos anteriores.
 
 [![CI](https://github.com/thomasmoreira/ai-native-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/thomasmoreira/ai-native-dotnet/actions/workflows/ci.yml)
 
----
-
-## A tese
-
-A maioria dos repos de IA é "chamei a OpenAI e funcionou". Este prova as **4 coisas que
-separam um engenheiro de IA arquiteto**:
-
-1. **RAG sério** — retrieval avaliado, resposta **com citações** (anti-alucinação).
-2. **Evals automatizadas** — a qualidade é **medida** (groundedness/precisão), não no chute.
-3. **Observabilidade de LLM** — cada chamada é um span com **modelo, tokens (in/out) e latência** (OTel GenAI).
-4. **Provider-agnóstico e testável** — troca o modelo numa linha; **testes determinísticos** sem chamar LLM de verdade.
-
-Fecha o arco do portfólio: **infra distribuída** ([consistency](https://github.com/thomasmoreira/distributed-consistency-lab) · [observability](https://github.com/thomasmoreira/observability-from-scratch) · [aspire](https://github.com/thomasmoreira/dotnet-aspire-reference)) **→ IA distribuída**, reusando Postgres, Aspire e OTel. O corpus default são **os próprios docs de arquitetura do portfólio** — um serviço de IA que **explica os seus labs**.
-
-## Arquitetura
+## Visão geral
 
 ```mermaid
 flowchart LR
@@ -33,39 +19,27 @@ flowchart LR
   AI -. OTLP · GenAI .-> DASH[[Aspire Dashboard]]
 ```
 
-Uma pergunta em `POST /ask` dispara o pipeline RAG: **embed da pergunta → retrieve no pgvector
-(top-k) → contexto → LLM (com tool-calling) → resposta com citações**. Tudo vira **um único
-trace distribuído** com modelo, tokens e latência nos spans.
+Uma pergunta em `POST /ask` dispara o pipeline de RAG: gera o embedding da pergunta, busca os top-k trechos mais parecidos no pgvector, monta o contexto e chama o LLM (que pode usar tool-calling), retornando a resposta com as citações. A request inteira aparece como um único trace, com modelo, tokens e latência em cada span.
 
-## Componentes
-
-| Peça | Papel |
+| Componente | Papel |
 |---|---|
-| **AppHost** | Orquestra pgvector + Ollama + o serviço (Aspire). |
-| **ServiceDefaults** | OTel + health + service discovery + resiliência. |
-| **AiService** | Minimal API: `POST /ask` (RAG) + `POST /ingest`; `Microsoft.Extensions.AI`. |
-| **pgvector** | Postgres com extensão `vector` — embeddings + busca por similaridade. |
-| **Ollama** | Modelos locais (`all-minilm` embeddings, `llama3.2` chat); pluggable p/ cloud. |
-
-## Sinais de arquiteto
-
-- **Evals como gate** — qualidade medida e versionada (análogo ao SLO do lab de observabilidade).
-- **Determinismo nos testes** — fake `IChatClient`/`IEmbeddingGenerator` → CI verde sem LLM externo.
-- **Tokens/latência observáveis** — por chamada, no trace (custo é derivável de tokens × preço para um provider de nuvem; local é grátis).
-- **Troca de provider sem refatorar** — `Microsoft.Extensions.AI` como abstração.
+| **AppHost** | Orquestra pgvector, Ollama e o serviço (Aspire). |
+| **ServiceDefaults** | OpenTelemetry, health checks, service discovery e resiliência. |
+| **AiService** | Minimal API: `POST /ask` e `POST /ingest`, sobre `Microsoft.Extensions.AI`. |
+| **pgvector** | Postgres com a extensão `vector`: embeddings e busca por similaridade. |
+| **Ollama** | Modelos locais (`all-minilm` para embeddings, `llama3.2` para chat); trocável por um provider de nuvem. |
 
 ## Como rodar
 
-**Pré-requisitos:** .NET 10 SDK e Docker (o Aspire roda pgvector e Ollama como containers).
+Pré-requisitos: .NET 10 e Docker (o Aspire executa o pgvector e o Ollama como containers).
 
 ```bash
-dotnet new install Aspire.ProjectTemplates   # uma vez
+dotnet new install Aspire.ProjectTemplates   # apenas na primeira vez
 
-# sobe pgvector + Ollama (baixa all-minilm + llama3.2) + o serviço + dashboard
+# sobe pgvector + Ollama (baixa os modelos all-minilm e llama3.2) + o serviço + dashboard
 dotnet run --project src/AppHost
-#   → o console imprime a URL do dashboard (com token de login)
 
-# indexa o corpus (docs do portfólio) e pergunta — a porta do serviço aparece no dashboard
+# indexa o corpus e pergunta (a porta do serviço aparece no dashboard)
 curl -X POST http://localhost:<porta>/ingest
 curl -X POST http://localhost:<porta>/ask -H 'Content-Type: application/json' \
   -d '{"question":"What is the transactional outbox and why use it?"}'
@@ -76,47 +50,35 @@ curl -X POST http://localhost:<porta>/ask -H 'Content-Type: application/json' \
 | Endpoint | O quê |
 |---|---|
 | `POST /ingest` | Indexa o corpus (chunk → embed → pgvector) |
-| `GET /search?q=` | Busca por similaridade (a metade de retrieval do RAG) |
-| `POST /ask` | RAG completo: retrieve → prompt grounded → LLM (com tool-calling) → resposta **com citações** |
+| `GET /search?q=` | Busca por similaridade (a parte de retrieval do RAG) |
+| `POST /ask` | RAG completo: retrieval → prompt com contexto → LLM (com tool-calling) → resposta com citações |
 
-### Ver o trace RAG (o killer detail)
+### O trace de uma request RAG
 
-Dispare um `POST /ask` e abra o **dashboard → Traces**. A request aparece como **um único trace**
-cruzando os hops, com **modelo, tokens e latência** nos spans (OTel GenAI conventions):
+Um `POST /ask` aparece no dashboard do Aspire como um único trace, cruzando os hops com modelo, tokens e latência nos spans. Esta é uma captura real, de uma request que passou por embedding (all-minilm), busca no pgvector, chat (llama3.2) e uma chamada de tool:
 
-```
-POST /ask (AiService)
-├─ embed (gen_ai) ............ all-minilm
-├─ db query (pgvector) ....... similarity search
-└─ chat (gen_ai) ............. llama3.2 · tokens in/out · latência
-```
+![Trace de um POST /ask no dashboard do Aspire, passando por embedding, pgvector, chat e tool-calling](docs/images/rag-trace.png)
 
-Captura real do dashboard — uma request `POST /ask` (38s, 3 recursos, 14 spans) com o fluxo
-completo: **embed (all-minilm) → pgvector → orchestrate_tools → chat (llama3.2) →
-execute_tool (ListSources) → chat** — RAG, observabilidade GenAI e tool-calling num trace só:
-
-![Trace RAG no dashboard do .NET Aspire: POST /ask cruzando embeddings (all-minilm) → pgvector → chat (llama3.2) com tool-calling, em spans GenAI](docs/images/rag-trace.png)
-
-## Verificação ao vivo
+### Testes
 
 ```bash
 dotnet test
 ```
 
-- **Plumbing** (determinístico, fake provider): ingest + `/search` + `/ask` com citações + tool-calling — rápido, sem LLM externo.
-- **Eval** (embeddings reais): recall@3 sobre um golden-set, com **gate** num threshold (ADR-004). Última execução: **recall@3 = 8/8 (100%)**.
+- Plumbing (determinístico, com fake provider): `ingest`, `search` e `ask` com citações e tool-calling, sem depender de um LLM externo.
+- Eval (com embeddings reais): recall@3 sobre um golden-set, com um gate de threshold (ADR-004). Na última execução, recall@3 = 8/8.
 
 ## Estrutura
 
 ```
 src/
-  AppHost/          — orquestração (Aspire): pgvector + Ollama (all-minilm, llama3.2) + serviço
-  ServiceDefaults/  — OTel + health + service discovery + resiliência
-  AiService/        — Minimal API: /ingest, /search, /ask; Microsoft.Extensions.AI
-data/               — corpus bundlado (docs de arquitetura dos 4 labs)
+  AppHost/          orquestração (Aspire): pgvector + Ollama + serviço
+  ServiceDefaults/  OpenTelemetry, health checks, service discovery e resiliência
+  AiService/        Minimal API: /ingest, /search, /ask; Microsoft.Extensions.AI
+data/               corpus indexado (docs de arquitetura dos outros labs)
 tests/
-  AppHost.Tests/    — fakes determinísticos (plumbing) + eval com embeddings reais
-docs/adr/           — decisões de arquitetura
+  AppHost.Tests/    fakes determinísticos (plumbing) + eval com embeddings reais
+docs/adr/           decisões de arquitetura
 ```
 
 ## Decisões de arquitetura
@@ -125,13 +87,7 @@ docs/adr/           — decisões de arquitetura
 - [ADR-002 — pgvector como vector store](docs/adr/ADR-002-pgvector.md)
 - [ADR-003 — Ollama local por padrão](docs/adr/ADR-003-ollama-default.md)
 - [ADR-004 — Evals como gate de qualidade](docs/adr/ADR-004-evals-as-gate.md)
-- [ADR-005 — OTel GenAI semantic conventions](docs/adr/ADR-005-genai-observability.md)
+- [ADR-005 — OpenTelemetry GenAI semantic conventions](docs/adr/ADR-005-genai-observability.md)
 - [ADR-006 — Testes com fake provider](docs/adr/ADR-006-fake-provider-tests.md)
 
-> Modelos pequenos e locais **de propósito** — o ponto é a **engenharia** (RAG observável,
-> avaliado e testável), não o modelo. A mesma arquitetura aponta para um modelo de fronteira
-> trocando uma linha de configuração.
-
----
-
-_Lab de portfólio. Foco: RAG, Microsoft.Extensions.AI, pgvector, evals, observabilidade de LLM e .NET Aspire._
+Os modelos são pequenos e locais de propósito: o foco do projeto é a engenharia em volta (RAG avaliado, observável e testável), não o modelo em si. Apontar para um modelo maior é uma troca de configuração.

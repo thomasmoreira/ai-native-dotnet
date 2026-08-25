@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup Label="IA + vetores">
-    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.9.0" />
     <PackageVersion Include="Pgvector" Version="0.3.2" />
   </ItemGroup>
 
